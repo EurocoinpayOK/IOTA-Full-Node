@@ -1,0 +1,93 @@
+Full Node Remote Access
+Update: the recommended way to enable remote access to IRI API port (e.g. for wallets) is via HAProxy. Please refer to Running IRI API Port Behind HAProxy.
+
+1. Exposing IRI Port Externally
+IRI has a command-line argument (“option”) --remote. Here’s an explanation on what it does:
+
+By default, IRI’s API port will listen on the local interface (xxxxxxxxx). This prevents any external connections to it.
+
+By using the --remote option, IRI will “listen” on the external interface/IP.
+
+We are going to have to edit the configuration file to enable this option and restart IRI. Follow the next steps.
+
+Note
+
+To edit files you can use nano which is a simple editor. See Using Nano to Edit Files for instructions.
+
+The --remote option can be specified in the configuration file:
+
+on CentOS /etc/sysconfig/iri
+on Ubuntu /etc/default/iri
+Edit the file and find the line:
+
+OPTIONS=""
+and add --remote to it:
+
+OPTIONS="--remote"
+Save the file and exit, then restart iri: systemctl restart iri
+
+After IRI initializes, you will see (by issuing lsof -Pni|grep java) that the API port is listening on your external IP.
+
+You can follow the instructions below on how to enable access to the port on the firewall.
+
+Note
+
+By default, this installation is set to not allow external communication to this port for security reasons. Should you want to allow this, you need to allow the port in the firewall.
+
+Expose IRI API Port in Firewall
+Allowing the port via the playbook
+If you followed the steps above (enabling the --remote option in the configuration file) you will need to allow the port in the firewall.
+
+You can do this using the playbook which as a bonus also adds rate limiting.
+
+On CentOS:
+
+cd /opt/iri-playbook && git pull && ansible-playbook -i inventory -v site.yml --tags=iri_firewalld -e api_port_remote=yes
+On Ubuntu without rate limiting:
+
+cd /opt/iri-playbook && git pull && ansible-playbook -i inventory -v site.yml --tags=iri_ufw -e api_port_remote=yes
+On Ubuntu with rate limiting:
+
+cd /opt/iri-playbook && git pull && ansible-playbook -i inventory -v site.yml --tags=iri_ufw -e api_port_remote=yes -e ufw_limit_iri_api=yes
+Note
+
+Rate limiting in ubuntu is using ufw which is a very simple wrapper to the iptables firewalls. It only allows one value of max 6 connections per 30 seconds. This might prevent doing PoW on your node if you choose to expose attachToTangle.
+
+Allowing the port manually
+On CentOS we run the command (which also adds rate limiting):
+
+firewall-cmd --remove-port=14265/tcp --zone=public --permanent && firewall-cmd --zone=public --permanent --add-rich-rule='rule port port="14265" protocol="tcp" limit value=30/m accept' && firewall-cmd --reload
+On Ubuntu:
+
+ufw allow 14265/tcp
+And to add rate limits:
+
+ufw limit 14265/tcp comment 'IRI API port rate limit'
+Note
+
+Rate limiting via ufw on ubuntu is very simple in that it only allows a value of 6 hits per 30 seconds. This can be a problem if you want to enable PoW – attachToTangle on your node.
+
+Now you should be able to point your (desktop’s) light wallet to your server’s IP:port (e.g. 80.120.140.100:14265).
+
+2. Tunneling IRI API for Wallet Connection
+Another option for accessing IRI and/or the iota-pm GUI is to use a SSH tunnel.
+
+SSH tunnel is created within a SSH connection from your computer (desktop/laptop) towards the server.
+
+The benefit here is that you don’t have to expose any of the ports or use the --remote flag. You use SSH to help you tunnel through its connection to the server in order to bind to the ports you need.
+
+Note
+
+For IOTA Peer Manager, this installation has already configured it to be accessible via a webserver. See Peer Manager Behind WebServer with Password
+
+What do you need to “forward” the IRI API?
+
+Your server’s IP
+The SSH port (22 by default in which case it doesn’t need specifying)
+The port on which IRI API is listening
+The port on which you want to access IRI API on (let’s just leave it the same as the one IRI API is listening on)
+A default installation would have IRI API listening on TCP port 14265.
+
+Note
+
+In order to create the tunnel you need to run the commands below from your laptop/desktop and not on the server where IRI is running.
